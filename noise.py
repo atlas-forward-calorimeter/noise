@@ -9,8 +9,7 @@ omega is angular frequency.
 
 TODO: Add preamp capacitance and additional amp gain.
 
-Written by Anson Kost, adapted from code written by
-Prof. John Rutherfoord.
+Written by Anson Kost, adapted from code by Prof. John Rutherfoord.
 """
 
 import math
@@ -56,9 +55,9 @@ def F_squared(omega):
 def G(omega):
     """The parallel "transfer function." """
     theta_i = omega * tau * 1j
-    phi_i = omega * (2 * T) * 1j
+    phi_i = omega * T * 1j
     return 1 / 2 * (
-            1 + ((1 - theta_i) / (1 + theta_i)) * cmath.exp(-phi_i)
+            1 + ((1 - theta_i) / (1 + theta_i)) * cmath.exp(-2 * phi_i)
     )
 
 
