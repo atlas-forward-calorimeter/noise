@@ -1,5 +1,4 @@
-"""
-Theoretical calculations of amplifier noise signals.
+"""Theoretical calculations of amplifier noise signals.
 
 Calculates electronic noise signal(s) for one center FCalPulse tube
 segment. *Without* shaping from digitzer front-end amp. All units are SI
@@ -9,7 +8,7 @@ omega is angular frequency.
 
 TODO: Add preamp capacitance.
 
-Written by Anson Kost, adapted from code by Prof. John Rutherfoord.
+Written by Anson Kost, adapted from code by Prof. John Rutherfoord. July 2019.
 """
 
 # From the Python Standard Library (if you're curious).

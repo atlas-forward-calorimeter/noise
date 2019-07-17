@@ -1,6 +1,6 @@
 """
 This is a work in progress that uses sympy to do the same calculations
-as noise.py. It's not finished!
+as theory.py. It's not finished!
 
 Theoretical calculations of amplifier noise signals.
 
