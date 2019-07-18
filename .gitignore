@@ -1,3 +1,6 @@
+# The experimental data.
+/data/
+
 # PyCharm
 .idea/
 exportToHTML/

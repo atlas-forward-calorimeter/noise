@@ -26,6 +26,7 @@ folder = (
     r"C:\Users\grape\Documents\aoi\fizz\FCal\Ryan"
     r"\FAMP20_NoiseData_7.15\FAMP20_6.0V"
 )
+folder = '6V'
 
 # Some relevant filenames that we are keeping on hand.
 filenames = [
@@ -51,6 +52,8 @@ def do_file(path):
     """Read in and analyze data from a file."""
     print(f"Doing file @ {path}.")
 
+    voltages = []
+
     # The "with" statement here guarantees that the file will be closed when
     # the statement finishes.
     with open(path) as file:
@@ -62,26 +65,58 @@ def do_file(path):
 
                 # The read_event function will advance our location in the
                 # file some more (in addition to the for loop increment).
-                read_event(file)
+                rms = read_event(file)
+                voltages.append(rms)
+    
+    mean = sum(voltages) / len(voltages)
+    print(f"Mean: {1000 * mean} mV")
 
 
 def read_event(file):
     """Read in the data from one event."""
-    event_size = read_header(file)
+    channels, samples_per_channel = read_header(file)
 
     # 2 samples per word. Omit 4 header words.
-    num_samples = 2 * (event_size - 4)
+    # num_samples = 2 * (event_size - 4)
 
-    readings, readings_squared = read_samples(
-        file,
-        num_samples=2 * (event_size - 4)
-    )
+    # readings, readings_squared = read_samples(
+    #     file,
+    #     num_samples=2 * (event_size - 4)
+    # )
+
+    for channel in channels:
+        readings, readings_squared = read_samples(
+            file,
+            samples_per_channel
+        )
+    event_readings = {
+        channel: read_samples(file, samples_per_channel)
+        for channel in channels
+    }
+    
+    do_means(readings)
+
+    num_kept_samples = len(readings)
     rms = math.sqrt(
-            sum(readings_squared) / num_samples
-            - (sum(readings) / num_samples) ** 2
+            sum(readings_squared) / num_kept_samples
+            - (sum(readings) / num_kept_samples) ** 2
     )
 
     print(f"RMS noise at the digitzer: {1000 * rms} mV.")
+
+    return rms
+
+
+def do_means(event_readings):
+    for channel, (readings, readings_squared) in event_readings:
+        num_kept_samples = len(readings)
+        rms = math.sqrt(
+                sum(readings_squared) / num_kept_samples
+                - (sum(readings) / num_kept_samples) ** 2
+        )
+
+        print(f"Channel {channel} RMS noise: {1000 * rms} mV.")
+        return rms
 
 
 def read_header(file):
@@ -103,14 +138,20 @@ def read_header(file):
     # Skip two lines and get the channel mask byte.
     _, _, ch_mask = (to_bits(next(file)) for _ in range(3))
 
+    # Convert the channel mask to a list of channel numbers.
+    channels = [position for position, bit in enumerate(ch_mask[::-1]) if bit == '1']
+
+    # Number of samples (two per word) per channel. Omit the 4 header words.
+    samples_per_channel = 2 * (event_size - 4 ) / len(channels)
+
     # For now, make sure channel 1 is the only one.
-    assert ch_mask == '00000001', "More than one channel is used!"
+    # assert ch_mask == '00000001', "More than one channel is used!"
 
     # Skip the last two words of the header.
     for _ in range(8):
         next(file)
 
-    return event_size
+    return channels, samples_per_channel
 
 
 def read_samples(file, num_samples):
@@ -121,7 +162,10 @@ def read_samples(file, num_samples):
         # Read the next two lines.
         high_byte, low_byte = (to_byte(next(file)) for _ in range(2))
 
-        assert high_byte in range(24, 39), "Weird high byte!"
+        assert high_byte in range(22, 40), "Weird high byte!"
+
+        if high_byte not in range(29, 34):
+            pass  # continue
         
         value = 256 * high_byte + low_byte
         voltage = volts_per_sample * value
@@ -162,6 +206,6 @@ if __name__ == '__main__':
 
     # Get folder from command line argument.
     if len(sys.argv) > 1:
-        folder = sys.argv[11]
+        folder = sys.argv[1]
 
     do_folder(folder)
