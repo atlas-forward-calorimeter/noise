@@ -1,14 +1,24 @@
 """Theoretical calculations of amplifier noise signals.
 
+TODO: Add preamp capacitance.
+TODO: Add shorts and open circuits.
+
 Calculates electronic noise signal(s) for one center FCalPulse tube
 segment. *Without* shaping from digitzer front-end amp. All units are SI
 unless otherwise stated.
 
-omega is angular frequency.
+`omega` is angular frequency.
 
-TODO: Add preamp capacitance.
+Note about abstracting the physics formulas:
+This script implements the F_squared etc. functions directly, but, since
+Python can handle complex numbers, a much more general approach is
+possible. F_squared, for example, could be calculated based on an
+arbitrary transmission line input impedance, and that input impedance
+could be calculated in another function. Abstractions like these can
+replace some of the algebra and can be taken as far as one wants.
 
-Written by Anson Kost, adapted from code by Prof. John Rutherfoord. July 2019.
+Written by Anson Kost, adapted from code by Prof. John Rutherfoord.
+July 2019.
 """
 
 # From the Python Standard Library (if you're curious).
@@ -46,12 +56,14 @@ omega_lims = (0, omega_digitzer)    # omega integration limits.
 def F_squared(omega):
     """Square magnitude of the series voltage "transfer function"
     (noise to amp output).
+
+    For a detector capacitance at the end of the transmission line.
     """
-    theta = omega * tau
+    phi = omega * tau
 
     # alpha is an angle that depends on the detector time constant
     # (rho * C), but not the cable length.
-    alpha = math.acos((1 - theta ** 2) / (1 + theta ** 2))
+    alpha = math.acos((1 - phi ** 2) / (1 + phi ** 2))
 
     return (
             1 / (2 * (A + 1)) ** 2
@@ -63,18 +75,48 @@ def F_squared(omega):
     )
 
 
+def F_squared_short(omega):
+    """For a short at the end of the transmission line."""
+    theta = omega * T
+    return ((A + 1) ** 2 + math.tan(theta) ** 2) / (
+            ((A - 1) * math.tan(theta)) ** 2 + (A + 1) ** 2
+    )
+
+
+def F_squared_open(omega):
+    """For an open circuit at the end of the transmission line.
+
+    (The impedance of a transmission line with an open circuit at the
+    end is the same as that of a line with a short at the end and which
+    is an additional 1/4 wavelength longer.)
+    """
+    theta = omega * T
+    return ((A + 1) ** 2 + 1 / math.tan(theta) ** 2) / (
+            ((A - 1) / math.tan(theta)) ** 2 + (A + 1) ** 2
+    )
+
+
 def G(omega):
     """The parallel current "transfer function." """
-    theta_i = omega * tau * 1j
-    phi_i = omega * T * 1j
+    theta_imag = omega * T * 1j
+    phi_imag = omega * tau * 1j
     return 1 / 2 * (
-            1 + ((1 - theta_i) / (1 + theta_i)) * cmath.exp(-2 * phi_i)
+            1 + ((1 - phi_imag) / (1 + phi_imag)) * cmath.exp(-2 * theta_imag)
     )
 
 
 def G_squared(omega):
     """Square magnitude of the parallel current "transfer function." """
     return abs(G(omega)) ** 2
+
+
+def G_squared_short(omega):
+    return math.sin(omega * T) ** 2
+
+
+def G_squared_open(omega):
+    """pi/4 phase shift relative to a shorted line."""
+    return math.cos(omega * T) ** 2
 
 
 def H_squared(omega):
@@ -95,8 +137,8 @@ def integrand(omega):
     we care about.
     """
     return (
-                   R * F_squared(omega)
-                   + (rho ** 2 / Q) * G_squared(omega)
+                   R * F_squared_open(omega)
+                   + (rho ** 2 / Q) * G_squared_open(omega)
            ) * H_squared(omega)
 
 

@@ -27,20 +27,17 @@ digitizer_voltage_range = 1 / 2   # Input voltage range.
 digitizer_sample_range = 2 ** 14  # Number of possible integer readings.
 volts_per_sample = digitizer_voltage_range / digitizer_sample_range
 
-# Default folder to analyze.
-folder = 'data/FAMP20_6V_MultiCh'
-folder2 = 'data/FAMP20_5.5V_MultiCh'
-folder3 = 'data/6V'
+# Default folders to analyze.
+folders = ['data/FAMP20_6V_MultiCh', 'data/FAMP20_5.5V_MultiCh', 'data/6V']
 
 # Some relevant filenames to keep on hand.
-filename = 'FAMP20_6V_MultiCh_Ch0_FCal_Connected_2019.07.17.14.34.txt'
-path = os.path.join(folder, filename)
-filenames = [
-    r"FAMP20_Ch1_FCal_Disconnected_2019.07.15.14.33.txt",
-    r"FAMP20_Ch10_FCal_Disconnected_2019.07.15.14.55.txt",
-    r"FAMP20_Ch20_Cable_Shorted_2019.07.15.15.05.txt",
-    r"FAMP20_Ch1_FCal_Connected_2019.07.15.14.31.txt"
-]
+# filename = 'FAMP20_6V_MultiCh_Ch0_FCal_Connected_2019.07.17.14.34.txt'
+# filenames = [
+#     r"FAMP20_Ch1_FCal_Disconnected_2019.07.15.14.33.txt",
+#     r"FAMP20_Ch10_FCal_Disconnected_2019.07.15.14.55.txt",
+#     r"FAMP20_Ch20_Cable_Shorted_2019.07.15.15.05.txt",
+#     r"FAMP20_Ch1_FCal_Connected_2019.07.15.14.31.txt"
+# ]
 
 
 def do_folder(path):
@@ -231,7 +228,8 @@ if __name__ == '__main__':
     # Only do the following when this script is run directly.
 
     if len(sys.argv) > 1:
-        # Get folder from command line argument.
-        folder = sys.argv[1]
+        # Get folders from command line arguments.
+        folders = sys.argv[1:]
 
-    do_folder(folder2)
+    for folder in folders:
+        do_folder(folder)
