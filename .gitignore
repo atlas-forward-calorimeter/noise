@@ -1,5 +1,6 @@
-# The experimental data.
+# Our experimental data and analysis output.
 /data/
+experimental_noise.txt
 
 # PyCharm
 .idea/

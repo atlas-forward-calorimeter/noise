@@ -16,28 +16,32 @@ Written by Anson Kost. July 2019.
 import math
 import os
 import sys
+import warnings
 
 # The NumPy module, from Anaconda!
 import numpy
 
-# Tell NumPy to print numbers to four significant figures.
-numpy.set_printoptions(suppress=True, precision=4)
+# Tell NumPy to print numbers to four decimal places...
 
-digitizer_voltage_range = 1 / 2   # Input voltage range.
+# ...without trailing zeros.
+# numpy.set_printoptions(suppress=True, precision=4)
+
+# ...with trailing zeros.
+numpy.set_printoptions(formatter={'float': '{: .4f}'.format})
+
+digitizer_voltage_range = 2   # Input voltage range.
 digitizer_sample_range = 2 ** 14  # Number of possible integer readings.
 volts_per_sample = digitizer_voltage_range / digitizer_sample_range
 
 # Default folders to analyze.
-folders = ['data/FAMP20_6V_MultiCh', 'data/FAMP20_5.5V_MultiCh', 'data/6V']
+folders = ['data/FAMP20_6V_MultiCh', 'data/FAMP20_5.5V_MultiCh']
 
-# Some relevant filenames to keep on hand.
-# filename = 'FAMP20_6V_MultiCh_Ch0_FCal_Connected_2019.07.17.14.34.txt'
-# filenames = [
-#     r"FAMP20_Ch1_FCal_Disconnected_2019.07.15.14.33.txt",
-#     r"FAMP20_Ch10_FCal_Disconnected_2019.07.15.14.55.txt",
-#     r"FAMP20_Ch20_Cable_Shorted_2019.07.15.15.05.txt",
-#     r"FAMP20_Ch1_FCal_Connected_2019.07.15.14.31.txt"
-# ]
+# Where to write analysis output.
+output_file = './experimental_noise.txt'
+
+# This will be updated during analysis and written to a file when the
+# analyses are done.
+output_message = ''
 
 
 def do_folder(path):
@@ -59,8 +63,8 @@ def do_file(path):
 
     file_readings = None
 
-    # The `with` statement here guarantees that the file will be closed when
-    # the statement finishes.
+    # The `with` statement here guarantees that the file will be closed
+    # when the statement finishes. This is a standard way to open files.
     with open(path) as file:
         # Loop over lines of the file.
         # Each line is an integer from 0 to 255.
@@ -81,36 +85,38 @@ def do_file(path):
                     for channel, readings in event_readings.items():
                         file_readings[channel] += readings
 
-    print(f"Analysis of {path}.")
-    analyze(file_readings)
+    channels, samples_per_channel, noises, correlations \
+        = analyze(file_readings)
+
+    printout(
+        channels, samples_per_channel, noises, correlations, data_path=path
+    )
 
 
 def analyze(readings):
     """Do calculations on a set of readings and print the results."""
+    # Convert dictionary keys into a list.
     channels = list(readings.keys())
+
+    # Convert lists of readings into NumPy arrays.
     readings_numpy = [numpy.array(reads) for reads in readings.values()]
 
-    num_samples = len(readings_numpy[0])
+    # Calculate some useful numbers.
+    samples_per_channel = len(readings_numpy[0])
     means = [reads.mean() for reads in readings_numpy]
-    rms = numpy.array([
+    noises = numpy.array([
         math.sqrt((reads ** 2).mean() - mean ** 2)
         for reads, mean in zip(readings_numpy, means)
     ])
     correlations = numpy.array([
         [
             ((reads_i - mean_i) * (reads_j - mean_j)).mean() / (rms_i * rms_j)
-            for reads_j, mean_j, rms_j in zip(readings_numpy, means, rms)
+            for reads_j, mean_j, rms_j in zip(readings_numpy, means, noises)
         ]
-        for reads_i, mean_i, rms_i in zip(readings_numpy, means, rms)
+        for reads_i, mean_i, rms_i in zip(readings_numpy, means, noises)
     ])
 
-    print(
-        f"{num_samples} samples."
-        f"\nChannels: {channels}"
-        f"\nNoise (mV): {1000 * rms}"
-        "\nPearson's correlation coefficients:"
-        f"\n{correlations}"
-    )
+    return channels, samples_per_channel, noises, correlations
 
 
 def read_event(file):
@@ -137,7 +143,7 @@ def read_header(file):
             + event_size_bytes[2]
     )
 
-    # Check the board fail byte.
+    # Check the "board fail" byte.
     assert to_bits(next(file))[5] == '0', "Hardware failure!"
 
     # Skip two bytes and then get the channel mask byte.
@@ -178,6 +184,7 @@ def read_header(file):
 
 def read_samples(file, num_words):
     """Read in a given number of words."""
+    # TODO: Comment this a little more.
     readings = []
 
     for _ in range(2 * num_words):
@@ -196,6 +203,97 @@ def read_samples(file, num_words):
         readings.append(voltage)
 
     return readings
+
+
+def printout(channels, samples_per_channel, noises, correlations, data_path):
+    """Format analysis results and print them to the screen and to a
+    file.
+    """
+    # Try to parse the filename, but if that doesn't go well, just
+    # display the whole filepath instead.
+    try:
+        input_V, setup, date = parse_filename(data_path)
+        file_info = f"{input_V}V inputs. {setup} {date}"
+    except:
+        file_info = data_path
+
+    # In Python, multiplying a list by an integer repeats its contents.
+    # For example, in the command line,
+    #     >>> 3 * [0, 1]
+    # would return
+    #     [0, 1, 0, 1, 0, 1]
+    # Also, in Python, strings are really lists of characters. So,
+    #     >>> 3 * 'hello'
+    # would return
+    #     'hellohellohello'
+    # Finally, Python strings have the useful `join` and `format`
+    # methods. (The format methods themselves are assigned to variables
+    # in the next three lines of code.) Placing an 'f' character before
+    # the first quote of a string is another syntax for using the
+    # `format` functionality.
+    num_channels = len(channels)
+    header_format = ' | '.join((
+        '{:18}', *(num_channels * ['{:7}'])
+    )).format
+    row_format = ' | '.join((
+        '{:18}', *(num_channels * ['{: 0.4f}'])
+    )).format
+
+    separator = 58 * '-'
+
+    correlation_rows = (
+        row_format(f"Correlation to ch{channel}", *corrs)
+        for channel, corrs in zip(channels, correlations)
+    )
+
+    message = '\n'.join((
+        separator,
+        file_info,
+        separator,
+        f"{samples_per_channel} samples per channel.",
+        separator,
+        header_format('Digitzer Channel', *channels),
+        separator,
+        row_format('Noise (mV)', *(1000 * noises)),
+        separator,
+        *correlation_rows,
+        separator,
+        ''
+    ))
+
+    print(message)
+
+    global output_message
+    output_message += message + '\n'
+
+
+def parse_filename(path):
+    """(Naively) extract useful info from a data filename."""
+    base, filename = os.path.split(path)
+    assert filename, \
+        "Tried to parse a directory path instead of a file path."
+
+    filename, _ = os.path.splitext(filename)  # Remove file extension.
+
+    # It's simpler to parse a string that is all lowercase.
+    filename = filename.lower()
+
+    # This uses the ternary operator.
+    input_V = '6' if '6v' in filename else '5.5'
+
+    setup = None
+    if 'ch0' in filename:
+        setup = 'FCal connected to ch0.'
+    elif 'all' in filename:
+        if 'shorted' in filename:
+            setup = 'All channels shorted.'
+        elif 'disconnected' in filename:
+            setup = 'All channels disconnected.'
+    assert setup, "I don't recognize the form of this filename!"
+
+    date = filename[-16:]
+
+    return input_V, setup, date
 
 
 def to_byte(byte):
@@ -225,11 +323,21 @@ def to_bits(byte):
 
 
 if __name__ == '__main__':
-    # Only do the following when this script is run directly.
+    # Putting the "body" of our program inside this `if` statement is
+    # optional. Code within this statement will only run when this
+    # module (file) is run directly by itself. The code will be skipped
+    # when this module is imported from the command line or by another
+    # module.
 
     if len(sys.argv) > 1:
-        # Get folders from command line arguments.
+        # Get folder paths from the command line arguments.
         folders = sys.argv[1:]
 
     for folder in folders:
         do_folder(folder)
+
+    if os.path.isfile(output_file):
+        warnings.warn("Output file already exists. We won't write to it.")
+    else:
+        with open(output_file, 'w') as file:
+            file.write(output_message)
