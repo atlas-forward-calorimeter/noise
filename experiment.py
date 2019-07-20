@@ -9,7 +9,8 @@ events which each begin with a header of four four-byte words followed
 by event samples, the number of which is specified in the header. All
 units are SI unless otherwise stated.
 
-Written by Anson Kost. July 2019.
+Written by Anson Kost with the help of Professor John Rutherfoord.
+Data taken by Ryan Lewis. July 2019.
 """
 
 # Import modules from the Python Standard Library.
@@ -29,7 +30,7 @@ import numpy
 # ...with trailing zeros.
 numpy.set_printoptions(formatter={'float': '{: .4f}'.format})
 
-digitizer_voltage_range = 2   # Input voltage range.
+digitizer_voltage_range = 1 / 2   # Input voltage range.
 digitizer_sample_range = 2 ** 14  # Number of possible integer readings.
 volts_per_sample = digitizer_voltage_range / digitizer_sample_range
 
@@ -47,9 +48,9 @@ output_message = ''
 def do_folder(path):
     """Read in and analyze all files in a folder."""
     path, dirs, files = next(os.walk(path))
-    for file in files:
-        # Skip decoded files.
+    for file in sorted(files):
         if 'decodeddata' in file.lower():
+            # Skip decoded files.
             continue
 
         do_file(os.path.join(path, file))
@@ -213,7 +214,7 @@ def printout(channels, samples_per_channel, noises, correlations, data_path):
     # display the whole filepath instead.
     try:
         input_V, setup, date = parse_filename(data_path)
-        file_info = f"{input_V}V inputs. {setup} {date}"
+        file_info = f"{date} \n+/- {input_V} LV. {setup}"
     except:
         file_info = data_path
 
@@ -249,7 +250,6 @@ def printout(channels, samples_per_channel, noises, correlations, data_path):
     message = '\n'.join((
         separator,
         file_info,
-        separator,
         f"{samples_per_channel} samples per channel.",
         separator,
         header_format('Digitzer Channel', *channels),
@@ -278,17 +278,21 @@ def parse_filename(path):
     # It's simpler to parse a string that is all lowercase.
     filename = filename.lower()
 
-    # This uses the ternary operator.
-    input_V = '6' if '6v' in filename else '5.5'
+    if '6.0v' in filename:
+        input_V = '6'
+    elif '5.5v' in filename:
+        input_V = '5.5'
+    else:
+        input_V = 'unknown'
 
     setup = None
     if 'ch0' in filename:
-        setup = 'FCal connected to ch0.'
+        setup = 'FCal connected to ch0. Other FAMP cables open.'
     elif 'all' in filename:
         if 'shorted' in filename:
-            setup = 'All channels shorted.'
+            setup = 'All FAMP cables shorted.'
         elif 'disconnected' in filename:
-            setup = 'All channels disconnected.'
+            setup = 'All FAMP cables open.'
     assert setup, "I don't recognize the form of this filename!"
 
     date = filename[-16:]
