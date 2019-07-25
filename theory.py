@@ -1,21 +1,22 @@
 """Theoretical calculations of amplifier noise signals.
 
 TODO: Add preamp capacitance.
-TODO: Add shorts and open circuits.
+TODO: Update frequency function.
 
 Calculates electronic noise signal(s) for one center FCalPulse tube
-segment. *Without* shaping from digitzer front-end amp. All units are SI
-unless otherwise stated.
+segment. *Without* shaping from digitizer front-end amp. All units are
+SI unless otherwise stated.
 
 `omega` is angular frequency.
 
 Note about abstracting the physics formulas:
 This script implements the F_squared etc. functions directly, but, since
 Python can handle complex numbers, a much more general approach is
-possible. F_squared, for example, could be calculated based on an
-arbitrary transmission line input impedance, and that input impedance
-could be calculated in another function. Abstractions like these can
-replace some of the algebra and can be taken as far as one wants.
+possible. For example, the F_squared function could take an arbitrary
+transmission line input impedance as a parameter, and that input
+impedance could be calculated later in some other function. Abstractions
+like these can replace some of the algebra and can be taken as far as
+one wants. theory2.py takes a more abstract approach.
 
 Written by Anson Kost, adapted from code by Prof. John Rutherfoord.
 July 2019.
@@ -43,14 +44,14 @@ Q = 770     # Parallel noise source impedance.
 
 tau_a = 0   # ?
 
-omega_digitzer = 2 * pi * 250e6     # Digitizer high frequency cutoff.
+omega_digitizer = 2 * pi * 250e6     # Digitizer high frequency cutoff.
 
 # For the frequency filter function (H_squared).
-tau_r = 1 / omega_digitzer
+tau_r = 1 / omega_digitizer
 
-tau = rho * C                       # Detector time constant.
+tau = rho * C                        # Detector time constant.
 
-omega_lims = (0, omega_digitzer)    # omega integration limits.
+omega_lims = (0, omega_digitizer)    # omega integration limits.
 
 
 def F_squared(omega):
@@ -127,7 +128,7 @@ def H_squared(omega):
 
 
 def H_squared_heaviside(omega):
-    return numpy.heaviside(omega_digitzer - omega, 1 / 2)
+    return numpy.heaviside(omega_digitizer - omega, 1 / 2)
 
 
 def integrand(omega):
@@ -137,11 +138,13 @@ def integrand(omega):
     we care about.
     """
     return (
-                   R * F_squared_open(omega)
-                   + (rho ** 2 / Q) * G_squared_open(omega)
+                   R * F_squared_short(omega)
+                   + (rho ** 2 / Q) * G_squared_short(omega)
            ) * H_squared(omega)
 
 
+# Perform the integration using SciPy's integrator (which uses the
+# Fortran QUADPACK package).
 integration_result, error = integrate.quad(
     integrand, omega_lims[0], omega_lims[1]
 )

@@ -4,7 +4,7 @@ This script is minimalistic, so a reader can understand it without
 knowing a lot of Python! Still, there are enough checks for a user to be
 "fairly confident" in the results.
 
-The digitzer is a Caen DT5730 (user manual UM3148). The data consists of
+The digitizer is a Caen DT5730 (user manual UM3148). The data consists of
 events which each begin with a header of four four-byte words followed
 by event samples, the number of which is specified in the header. All
 units are SI unless otherwise stated.
@@ -252,7 +252,7 @@ def printout(channels, samples_per_channel, noises, correlations, data_path):
         file_info,
         f"{samples_per_channel} samples per channel.",
         separator,
-        header_format('Digitzer Channel', *channels),
+        header_format('Digitizer Channel', *channels),
         separator,
         row_format('Noise (mV)', *(1000 * noises)),
         separator,
