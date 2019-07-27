@@ -16,7 +16,7 @@ possible. For example, the F_squared function could take an arbitrary
 transmission line input impedance as a parameter, and that input
 impedance could be calculated later in some other function. Abstractions
 like these can replace some of the algebra and can be taken as far as
-one wants. theory2.py in the top directory takes a more abstract
+one wants. theory.py in the top directory takes a more abstract
 approach.
 
 Written by Anson Kost, adapted from code by Prof. John Rutherfoord.
