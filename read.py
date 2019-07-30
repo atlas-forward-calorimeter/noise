@@ -7,7 +7,7 @@ from collections import defaultdict
 count_range = 2 ** 14
 
 
-def read_file(path, voltage_range):
+def read(path, voltage_range):
     """Read in events from a file, combine them, and return them."""
     # TODO: remove path normalization.
     # path = os.path.normpath(path)  # "Normalize" the path.
@@ -153,7 +153,7 @@ def _to_bits(byte):
 
 if __name__ == '__main__':
     # Testing the reader.
-    r = read_file(
+    r = read(
         '../data/FAMP20_SquareWave_CalibrationLineTest_1MHz_0.5VGain_07.26'
         '.2019/FAMP20_6.0V_SquareWave_1MHz_0.5VGain_2019.07.26.16.52.txt',
         1 / 2
