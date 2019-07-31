@@ -63,7 +63,7 @@ def go(filepath):
     ]
 
 
-def plot(volts0, volts1, title=None):
+def plot(volts0, volts1, title=None, save=None):
     """Make a simple plot of the voltage readings on both channels."""
     volts0, volts1 = np.asanyarray(volts0), np.asanyarray(volts1)
     title = title or 'Noise readings on both channels.'
@@ -74,6 +74,8 @@ def plot(volts0, volts1, title=None):
     plt.plot(1000 * volts0, label=f'Channel 0')
     plt.plot(1000 * volts1, label=f'Channel 1')
     plt.legend(loc='upper right')
+    if save:
+        plt.savefig(save, dpi=300, bbox_inches='tight')
 
 
 def _crunch_square(i, low, high, volts0, volts1):
@@ -93,7 +95,7 @@ def _crunch_square(i, low, high, volts0, volts1):
     )
     print(message)
 
-    plot(volts0, volts1, message)
+    plot(volts0, volts1, message, save=str(i) + '.jpg')
     plt.show()
 
 
@@ -163,7 +165,7 @@ def _sections(boundaries, *valuess):
 
 if __name__ == '__main__':
     r = read.read(datapath, digitizer_voltage_range)
-    plot(r[0], r[1])
+    plot(r[0], r[1], save='everything.jpg')
     plt.show()
 
     go(datapath)
