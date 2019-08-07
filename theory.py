@@ -37,10 +37,10 @@ rho_amp = rho  # FAMP transimpedance.
 omega_digitizer = 2 * pi * 250e6  # Digitizer high frequency cutoff.
 tau_r = 1 / omega_digitizer  # Digitizer time constant.
 tau_a = 0  # A time constant.
-R_c1, R_c2 = 1e-6, 1e-6  # Low frequency cutoff resistances.
+C1, C2 = 1e-6, 1e-6  # Low frequency cutoff capacitances.
 
 # Low frequency cutoff time constants.
-tau_c1, tau_c2 = rho * R_c1, rho * R_c2
+tau_c1, tau_c2 = rho * C1, rho * C2
 
 omega_lims = (0, 1 * omega_digitizer)  # omega integration limits.
 
@@ -222,10 +222,10 @@ def _check_integration(result, error):
 def _printout(input_V, input_I_eff, output_V):
     print(
         "Noise signals:\n"
+        f"Output RMS voltage: {round(1000 * output_V, 4)} mV.\n"
         f"Input RMS voltage: {round(1000 * input_V, 4)} mV.\n"
         "Effective input RMS current (\"ENI\"):"
         f" {round(1e9 * input_I_eff, 4)} nA.\n"
-        f"Output RMS voltage: {round(1000 * output_V, 4)} mV.\n"
     )
 
 
@@ -268,6 +268,8 @@ def plot():
 
 if __name__ == '__main__':
     noise(lambda omega: Z_capacitance(omega, C))
-    noise(lambda omega: Z_capacitance(omega, C_s), contributions='S')
-    plot()
-    plt.show()
+    noise(lambda omega: Z_capacitance(omega, C_s))
+    noise(lambda omega: 0)
+    noise(lambda omega: 1e17)
+    # plot()
+    # plt.show()

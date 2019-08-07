@@ -115,7 +115,7 @@ def _read_sample(file):
     return the value in counts."""
     high_byte, low_byte = _to_byte(next(file)), _to_byte(next(file))
 
-    assert high_byte in range(15, 46), \
+    assert high_byte in range(13, 56), \
         f"Weird high byte: {high_byte}! With low byte {low_byte}."
     if high_byte not in range(29, 34):
         # Using `continue` here will skip samples outside of this

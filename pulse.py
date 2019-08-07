@@ -29,12 +29,23 @@ digitizer_voltage_range = 1 / 2
 # Number of indices to trim off when looking at the individual squares
 # of square waves. Values are trimmed on either side in order to avoid
 # the transition period between squares.
-square_cutoff = 25
+rise_fall_cutoff = 25
 
 # Keep the path to the data handy.
 datapath = (
-    '../data/FAMP20_SquareWave_CalibrationLineTest_1MHz_0.5VGain_07.26'
-    '.2019/FAMP20_6.0V_SquareWave_1MHz_0.5VGain_2019.07.26.16.52.txt'
+    '../data'
+    '/FAMP20_SquareWave_CalibrationLineTest_1MHz_0.5VGain_07.26.2019'
+    '/FAMP20_6.0V_SquareWave_1MHz_0.5VGain_2019.07.26.16.52.txt'
+)
+datapath = (
+    '../data'
+    '/FAMP20_SquareWave_CalibrationLineTest_1MHz_08.05.2019'
+    '/FAMP20_SqW_1MHz_FeCore_PowerIso_FaradayCage_2019.08.05.15.47.txt'
+)
+datapath = (
+    '../data'
+    '/FAMP20_SquareWave_CalibrationLineTest_1MHz_08.06.2019'
+    '/FAMP20_SqW_1MHz_FeCore_PowerIso_FdyCage_CryoCan_2019.08.06.13.12.txt'
 )
 
 
@@ -54,6 +65,7 @@ def go(filepath):
     offset = _match_offset(
         guide=crossings[1], to_match=crossings[0], offsets=offsets
     )
+    print(f'Offset: {offset} samples.')
     analyses = [
         _crunch_square(i, low, high, volts0, volts1)
         for i, ((low, high), volts0, volts1)
@@ -85,7 +97,7 @@ def _crunch_square(i, low, high, volts0, volts1):
     See `_sections` for documentation of the function parameters.
     """
     # Trim off the transition period between squares of the square wave.
-    square = volts0[square_cutoff:-square_cutoff]
+    square = volts0[rise_fall_cutoff:-rise_fall_cutoff]
     mean, std = square.mean(), square.std()
 
     message = (
