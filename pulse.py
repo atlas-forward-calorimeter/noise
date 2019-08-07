@@ -8,11 +8,12 @@ Notes:
 """
 
 import itertools
+import os
+import sys
 
 import numpy as np
 import seaborn
 from matplotlib import pyplot as plt
-from timeit import timeit
 
 import read
 
@@ -25,54 +26,102 @@ offsets = range(30)
 # digitizer. Can be 1/2 or 2 Volts.
 digitizer_voltage_range = 1 / 2
 
-
 # Number of indices to trim off when looking at the individual squares
 # of square waves. Values are trimmed on either side in order to avoid
 # the transition period between squares.
 rise_fall_cutoff = 25
 
+# Plot parameters.
+_linewidth = 1
+
+# Format and dots-per-inch of saved images.
+_image_format = 'jpg'
+_image_dpi = 300
+
 # Keep the path to the data handy.
-datapath = (
-    '../data'
-    '/FAMP20_SquareWave_CalibrationLineTest_1MHz_0.5VGain_07.26.2019'
-    '/FAMP20_6.0V_SquareWave_1MHz_0.5VGain_2019.07.26.16.52.txt'
-)
-datapath = (
-    '../data'
-    '/FAMP20_SquareWave_CalibrationLineTest_1MHz_08.05.2019'
-    '/FAMP20_SqW_1MHz_FeCore_PowerIso_FaradayCage_2019.08.05.15.47.txt'
-)
+# datapath = (
+#     '../data'
+#     '/FAMP20_SquareWave_CalibrationLineTest_1MHz_0.5VGain_07.26.2019'
+#     '/FAMP20_6.0V_SquareWave_1MHz_0.5VGain_2019.07.26.16.52.txt'
+# )
+# datapath = (
+#     '../data'
+#     '/FAMP20_SquareWave_CalibrationLineTest_1MHz_08.05.2019'
+#     '/FAMP20_SqW_1MHz_FeCore_PowerIso_FaradayCage_2019.08.05.15.47.txt'
+# )
+# datapath = (
+#     '../data'
+#     '/FAMP20_SquareWave_CalibrationLineTest_1MHz_08.05.2019'
+#     '/FAMP20_SqW_1MHz_FeCore_PowerIso_FaradayCage_2019.08.05.16.09.txt'
+# )
+# datapath = (
+#     '../data'
+#     '/FAMP20_SquareWave_CalibrationLineTest_1MHz_08.06.2019'
+#     '/FAMP20_SqW_1MHz_FeCore_PowerIso_FdyCage_CryoCan_2019.08.06.13.12'
+#     '.txt'
+# )
 datapath = (
     '../data'
     '/FAMP20_SquareWave_CalibrationLineTest_1MHz_08.06.2019'
-    '/FAMP20_SqW_1MHz_FeCore_PowerIso_FdyCage_CryoCan_2019.08.06.13.12.txt'
+    '/FAMP20_SqW_1MHz_FeCore_PowerIso_FdyCage_CryoCan_2019.08.06.13.13'
+    '.txt'
 )
 
+# Title for the particular set of data being analyzed.
+title = 'Faraday Cage and Cryostat. File 2. 8-06.'
 
-def go(filepath):
-    """Read in pulsed data and analyze the pulses, one by one."""
+# Where to save the analysis results.
+save_dir = 'cage-cryo-8-06/file2'
+
+
+def do_folders(
+        folders, max_squares=None, save_dir=None, show=False, title=None
+):
+    """Analyze several folders of data and save the results."""
+    for folder in folders:
+        assert os.path.isdir(folder), "This isn't a folder."
+        root, dirs, files = next(os.walk(folder))
+        assert root == folder
+
+        if save_dir:
+            folder_save_dir = os.path.join(save_dir, _dir2name(folder))
+        else:
+            folder_save_dir = None
+
+        for file in files:
+            if 'decoded' in file.lower():
+                continue
+
+            if folder_save_dir:
+                file_save_dir = os.path.join(folder_save_dir, _file2name(file))
+            else:
+                file_save_dir = None
+
+            go(os.path.join(folder, file), max_squares, save_dir, show, title)
+
+
+def go(filepath, max_squares=None, save_dir=None, show=False, title=None):
+    """Read in pulsed data and analyze the pulses, one by one.
+
+    :param readings: Digitizer readings.
+    :param max_squares: Maximum number of squares to "crunch."
+    :param save_dir: Folder to save the plots in.
+    :param show: If `True`, display the plots one by one.
+    :param title: Overall plot title.
+    :return:"""
+    if save_dir:
+        os.makedirs(save_dir)
+
     readings = {
         # Voltages are relative to the mean over the channel.
         channel: np.asanyarray(voltages) - np.mean(voltages)
         for channel, voltages
         in read.read(filepath, digitizer_voltage_range).items()
     }
-    assert readings.keys() == {0, 1}, \
-        f"Unrecognized keys: {readings.keys()}"
-    crossings = {
-        channel: _crossings(voltages) for channel, voltages in readings.items()
-    }
-    offset = _match_offset(
-        guide=crossings[1], to_match=crossings[0], offsets=offsets
-    )
-    print(f'Offset: {offset} samples.')
-    analyses = [
-        _crunch_square(i, low, high, volts0, volts1)
-        for i, ((low, high), volts0, volts1)
-        in enumerate(_sections(
-            crossings[1], readings[0][offset:], readings[1][:-offset]
-        ))
-    ]
+    plot(readings[0], readings[1])
+    plt.show()
+
+    crunch_squares(readings, max_squares, save_dir, show, title)
 
 
 def plot(volts0, volts1, title=None, save=None):
@@ -83,32 +132,70 @@ def plot(volts0, volts1, title=None, save=None):
     ax.set_title(title)
     ax.set_xlabel('Sample')
     ax.set_ylabel('Reading (mV)')
-    plt.plot(1000 * volts0, label=f'Channel 0')
-    plt.plot(1000 * volts1, label=f'Channel 1')
+    plt.plot(1000 * volts0, label=f'Channel 0', linewidth=_linewidth)
+    plt.plot(1000 * volts1, label=f'Channel 1', linewidth=_linewidth)
     plt.legend(loc='upper right')
     if save:
-        plt.savefig(save, dpi=300, bbox_inches='tight')
+        plt.savefig(save, dpi=_image_dpi, bbox_inches='tight')
+    return fig
 
 
-def _crunch_square(i, low, high, volts0, volts1):
+def crunch_squares(
+        readings, max_squares=None, save_dir=None, show=False, title=None
+):
+    """Analyze square pulses one by one.
+
+    See `go` for documentation of this function's parameters.
+    """
+    _check_readings(readings)
+    crossings = {
+        channel: _crossings(voltages) for channel, voltages in readings.items()
+    }
+    offset = _match_offset(
+        guide=crossings[1], to_match=crossings[0], offsets=offsets
+    )
+    print(f'Offset: {offset} samples.')
+
+    max_squares = max_squares or len(crossings[1]) + 1
+    analyses = [
+        _crunch_square(
+            i, low, high, volts0, volts1, save_dir=save_dir, show=show, title=title
+        )
+        for i, ((low, high), volts0, volts1)
+        in zip(
+            range(1, max_squares + 1),
+            _sections(
+                crossings[1], readings[0][offset:], readings[1][:-offset]
+            )
+        )
+    ]
+
+
+def _crunch_square(i, low, high, volts0, volts1, save_dir, show, title=None):
     """Analyze one flat "edge" of a square from some square wave noise
     readings.
-
-    See `_sections` for documentation of the function parameters.
     """
     # Trim off the transition period between squares of the square wave.
     square = volts0[rise_fall_cutoff:-rise_fall_cutoff]
     mean, std = square.mean(), square.std()
 
     message = (
-        f'Noise for "square" {i}. Samples {low} to {high}.\n'
-        f'{1000 * mean:.2f} mV mean and {1000 * std:.2f} mV std on '
-        f'channel 0.'
+        f'Square {i}. Samples {low} to {high}.\n'
+        f'{1000 * mean:.2f} mV mean and {1000 * std:.2f} mV std on ch0.'
     )
     print(message)
 
-    plot(volts0, volts1, message, save=str(i) + '.jpg')
-    plt.show()
+    if save_dir:
+        filename = '.'.join((str(i), _image_format))
+        savepath = os.path.join(save_dir, filename)
+    else:
+        savepath = None
+
+    plot_title = '\n'.join((title, message)) if title else message
+    fig = plot(volts0, volts1, plot_title, save=savepath)
+    if show:
+        plt.show()
+    plt.close(fig)
 
 
 def _match_offset(guide, to_match, offsets, tol=0):
@@ -175,31 +262,45 @@ def _sections(boundaries, *valuess):
         yield ((low, high), *(vals[low:high] for vals in valuess))
 
 
+def _check_readings(readings):
+    """Make sure the readings from the digitizer are in a form we
+    expect.
+    """
+    assert readings.keys() == {0, 1}, \
+        f"Unrecognized keys: {readings.keys()}"
+
+
+def _file2name(file_path):
+    """
+    Return the name of the file at `file_path` without its extension.
+
+    :param file_path: File path.
+    :type file_path: str
+    :return: Nice name.
+    :rtype: str
+    """
+    tail, head = os.path.split(file_path)
+    assert head != '', "Is this a directory instead of a file_path?"
+
+    return head.split('.')[0]
+
+
+def _dir2name(dir_path):
+    """
+    Return the name of the directory at `dir_path`.
+
+    :param dir_path: Directory path.
+    :type dir_path: str
+    :return: Nice name.
+    :rtype: str
+    """
+    tail, head = os.path.split(dir_path)
+    if head == '':
+        tail, head = os.path.split(tail)
+
+    return head
+
+
 if __name__ == '__main__':
-    r = read.read(datapath, digitizer_voltage_range)
-    plot(r[0], r[1], save='everything.jpg')
-    plt.show()
-
-    go(datapath)
-
-    # TODO: Throw this all in a function, or remove it.
-    # r = read(
-    #     '../data/FAMP20_SquareWave_CalibrationLineTest_1MHz_0.5VGain_07.26'
-    #     '.2019/FAMP20_6.0V_SquareWave_1MHz_0.5VGain_2019.07.26.16.52.txt',
-    #     1 / 2
-    # )
-    # r = {channel: np.asanyarray(readings) for channel, readings in r.items()}
-    # r = {
-    #     channel: readings - readings.mean() for channel, readings in r.items()
-    # }
-    # cross0, cross1 = (_crossings(read) for read in r.values())
-    # offset = _match_offset(cross1, cross0, offsets)
-    #
-    # for (lo, hi), square0, square1 in _sections(cross1 + offset, r[0], r[1]):
-    #     print(lo, hi)
-    #     plot({0: square0, 1: square1})
-    #     plt.show()
-    #
-    # plot(r)
-    # plot({'0': r[0][offset:], '1': r[1][:-offset]})
-    # # plt.show()
+    # do_folders(sys.argv[1:], max_squares=25, save_dir='analysis')
+    go(datapath, max_squares=25, save_dir=save_dir, show=False, title=title)
