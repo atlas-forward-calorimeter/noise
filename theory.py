@@ -15,37 +15,121 @@ Written by Anson Kost, adapted from code by Prof. John Rutherfoord.
 July 2019.
 """
 
+import functools
 import math
 import warnings
 
 import scipy.integrate
 from scipy.constants import pi, Boltzmann, zero_Celsius
 
-R = 26  # Series noise source impedance.
-Q = 770  # Parallel noise source impedance.
+# Johnson-Nyquist noise sources.
+R = 26  # Series noise source resistance.
+Q = 770  # Parallel noise source resistance.
 
 C = 6e-12  # Estimate of tube cals capacitance.
 C_s = 5.7e-12  # Shower cals capacitance.
 
-A = 39  # Opamp amplification.
-A2 = 2.2  # "Second stage" FAMP amplification.
+# Amplification from the preamp input to the feedback resistor.
+# This represents the opamp, i.e. the "first stage" of amplification.
+# The sign of A slightly affects the magnitude of the series transfer
+# function `F` and thus the magnitude of the series noise at the preamp
+# input.
+A = -39
+
+# Amplification from the preamp input to the output. The transimpedance
+# is A2 * rho_amp (rho_amp is the input impedance). A2 represents the
+# combination of both the "first stage" and "second stage" of
+# amplification.
+A2 = 87
 
 T = 4e-9  # Cable time delay.
 rho = 50  # Cable characteristic impedance.
-rho_amp = rho  # FAMP transimpedance.
+rho_amp = rho  # FAMP input impedance.
 
 omega_digitizer = 2 * pi * 250e6  # Digitizer high frequency cutoff.
 tau_r = 1 / omega_digitizer  # Digitizer time constant.
-tau_a = 0  # A time constant.
+tau_a = 0  # An unused frequency filter time constant.
 C1, C2 = 1e-6, 1e-6  # Low frequency cutoff capacitances.
 
 # Low frequency cutoff time constants.
 tau_c1, tau_c2 = rho * C1, rho * C2
 
-omega_lims = (0, 1 * omega_digitizer)  # omega integration limits.
+omega_lims = (1e3, 1 * omega_digitizer)  # omega integration limits.
 
 
-def noise(Z_end_fn=None, contributions='SP', printout=True):
+def noise_comparison(Z_end_fns=None):
+    """Calculate noise results with several impedances at the end of the
+    cable. Also, for each impedance, integrate over both omega and
+    ln(omega), using several integration limits for each of these two
+    integration methods.
+
+    Used for the August 1 results.
+    """
+    if not Z_end_fns:
+        Z_end_fns = {
+            'FCal': functools.partial(Z_capacitance, C=C),
+            'SCal': functools.partial(Z_capacitance, C=C_s),
+            'Open': Z_open,
+            'Short': Z_short
+        }
+    limss_log = (
+        # (1e-3, 1),
+        # (1e-10, 1),
+        # (1e-10, 500 * omega_digitizer),
+        # (1, 1e5),
+        (1e5, 500 * omega_digitizer),  # "Best" limits.
+        # (1e5, 5000 * omega_digitizer),
+        # (1e5, 1e10 * omega_digitizer),
+        # (1e5, 1e30 * omega_digitizer),
+    )
+    limss = (
+        # (1e-10, 500 * omega_digitizer),
+        (1e5, 500 * omega_digitizer),  # "Best" limits.
+        # (1e5, 5000 * omega_digitizer),
+        # (1e5, 1e10 * omega_digitizer),
+    )
+
+    lines = [_printout_header]
+    for label, Z_end_fn in Z_end_fns.items():
+        for lims in limss_log:
+            input_V = noise(Z_end_fn, omega_lims=lims)
+            lines.append(_printout(input_V, label, lims))
+        for lims in limss:
+            input_V = noise(Z_end_fn, omega_lims=lims, log=False)
+            lines.append(_printout(input_V, label, lims))
+    print('\n'.join(lines))
+
+
+_printout_header = '{:>25}, {:>25}, {:>40}'.format(
+    'Output RMS voltage (mV)',
+    'Input RMS voltage (uV)',
+    'Effective input RMS current ("ENI") (nA)'
+)
+_printout_line_fmt = '{:25.5f}, {:25.4f}, {:40.3f}, {}, {}'.format
+_printout_line_fmt2 = '{:25f}, {:25f}, {:40f}, {}, {}'.format
+
+
+def _printout(input_V, label='', lims=''):
+    output_V, eni = _input_V_calcs(input_V, A2, rho_amp)
+    return _printout_line_fmt(
+        1000 * output_V, 1e6 * input_V, 1e9 * eni, label, lims
+    )
+
+
+def _input_V_calcs(input_V, A2, rho_amp):
+    """Get the effective preamp input noise current (ENI) and the output
+    noise voltage from the noise voltage at the preamp input.
+
+    :return: output voltage, effective input current (ENI)
+    """
+    output_V = A2 * input_V
+    eni = input_V / rho_amp
+
+    return output_V, eni
+
+
+def noise(Z_end_fn=None, omega_lims=omega_lims, contributions='SP',
+          printout=True, log=True):
     """The total integrated noise."""
     _check_contributions_string(contributions)
 
@@ -55,9 +139,18 @@ def noise(Z_end_fn=None, contributions='SP', printout=True):
 
     integration_result, error = 0, 0
 
+    if log:
+        lims = np.log(omega_lims)
+        series_int = _series_integrand_log
+        parallel_int = _parallel_integrand_log
+    else:
+        lims = omega_lims
+        series_int = _series_integrand
+        parallel_int = _parallel_integrand
+
     if 'S' in contributions:
         result, err = scipy.integrate.quad(
-            _series_integrand, omega_lims[0], omega_lims[1], args=(
+            series_int, lims[0], lims[1], args=(
                 Z_end_fn, A, T, rho, rho_amp, tau_a, tau_r, tau_c1, tau_c2
             )
         )
@@ -67,7 +160,7 @@ def noise(Z_end_fn=None, contributions='SP', printout=True):
 
     if 'P' in contributions:
         result, err = scipy.integrate.quad(
-            _parallel_integrand, omega_lims[0], omega_lims[1], args=(
+            parallel_int, lims[0], lims[1], args=(
                 Z_end_fn, T, rho, rho_amp, tau_a, tau_r, tau_c1, tau_c2
             )
         )
@@ -78,12 +171,7 @@ def noise(Z_end_fn=None, contributions='SP', printout=True):
     # Preamp input noise RMS voltage.
     input_V = _sqrt_constant_factor * math.sqrt(integration_result)
 
-    output_V, input_I_eff = _input_V_calcs(input_V, A, A2, rho_amp)
-
-    if printout:
-        _printout(input_V, input_I_eff, output_V)
-
-    return output_V
+    return input_V
 
 
 def noise_density(omega, Z_end_fn=None, contributions='SP'):
@@ -111,15 +199,6 @@ def noise_density(omega, Z_end_fn=None, contributions='SP'):
     return _constant_factor * density
 
 
-def _input_V_calcs(input_V, A, A2, rho_amp):
-    """Get the effective preamp input noise current (ENI) and the output
-    noise voltage from the noise voltage at the preamp input."""
-    output_V = A2 * A * input_V
-    input_I_eff = input_V / rho_amp
-
-    return output_V, input_I_eff
-
-
 # Overall factors that are constant over the integration.
 _constant_factor = (2 / pi) * Boltzmann * zero_Celsius
 _sqrt_constant_factor = math.sqrt(_constant_factor)
@@ -130,6 +209,8 @@ def _integrand(omega, Z_end_fn, A, T, rho, rho_amp, tau_a, tau_r, tau_c1,
     """The sum of the series and parallel integrands with their
     individual constant factors. An overall constant factor is still
     excluded.
+
+    This is not currently used.
     """
     # return _series_constant_factor * _series_integrand(
     #     omega, Z_end_fn, A, T, rho, rho_amp, tau_a, tau_r, tau_c1, tau_c2
@@ -149,8 +230,23 @@ _series_constant_factor = R
 
 def _series_integrand(omega, Z_end_fn, A, T, rho, rho_amp, tau_a, tau_r,
                       tau_c1, tau_c2):
+    """Represents the series noise per omega without constant factors."""
     # |F|^2 |H|^2
     return abs(F(
+        Z_cable(omega * T, Z_end_fn(omega), rho),
+        A,
+        rho_amp
+    )) ** 2 * H_squared(omega, tau_a, tau_r, tau_c1, tau_c2)
+
+
+def _series_integrand_log(ln_omega, Z_end_fn, A, T, rho, rho_amp, tau_a, tau_r,
+                      tau_c1, tau_c2):
+    """Represents the series noise per ln(omega) without constant
+    factors.
+    """
+    # |F|^2 |H|^2
+    omega = np.exp(ln_omega)
+    return omega * abs(F(
         Z_cable(omega * T, Z_end_fn(omega), rho),
         A,
         rho_amp
@@ -162,8 +258,22 @@ _parallel_constant_factor = rho_amp ** 2 / Q
 
 def _parallel_integrand(omega, Z_end_fn, T, rho, rho_amp, tau_a, tau_r, tau_c1,
                         tau_c2):
+    """Represents the parallel noise per omega without constant factors."""
     # |G|^2 |H|^2
     return abs(G(
+        Z_cable(omega * T, Z_end_fn(omega), rho),
+        rho_amp
+    )) ** 2 * H_squared(omega, tau_a, tau_r, tau_c1, tau_c2)
+
+
+def _parallel_integrand_log(ln_omega, Z_end_fn, T, rho, rho_amp, tau_a, tau_r,
+                            tau_c1, tau_c2):
+    """Represents the parallel noise per ln(omega) without constant
+    factors.
+    """
+    # |G|^2 |H|^2
+    omega = np.exp(ln_omega)
+    return omega * abs(G(
         Z_cable(omega * T, Z_end_fn(omega), rho),
         rho_amp
     )) ** 2 * H_squared(omega, tau_a, tau_r, tau_c1, tau_c2)
@@ -181,10 +291,10 @@ def G(Z_cabl, rho_amp):
 def Z_cable(theta, Z_end, rho):
     """ "Input" impedance of an ideal lossless transmission line in
     terms of the impedance Z_end at the other end."""
-    tan_theta = math.tan(theta)
+    tan_theta = np.tan(theta)
     return rho * (
-            Z_end + 1.j * rho * tan_theta
-    ) / (rho + 1.j * Z_end * tan_theta)
+            Z_end + 1j * rho * tan_theta
+    ) / (rho + 1j * Z_end * tan_theta)
 
 
 def H_squared(omega, tau_a, tau_r, tau_c1, tau_c2):
@@ -199,11 +309,23 @@ def H_squared(omega, tau_a, tau_r, tau_c1, tau_c2):
 
 
 def Z_capacitance(omega, C):
-    return - 1.j / (omega * C)
+    return - 1j / (omega * C)
 
 
 def Z_inductance(omega, L):
-    return 1.j * omega * L
+    return 1j * omega * L
+
+
+def Z_open(omega):
+    """ "Infinite" impedance for open circuits."""
+    return 1e12j
+
+
+def Z_short(omega):
+    """This function exists because it has a descriptive name, but it
+    just takes `omega` as an argument and returns 0.
+    """
+    return 0
 
 
 def _check_contributions_string(string):
@@ -215,19 +337,13 @@ def _check_contributions_string(string):
 
 def _check_integration(result, error):
     """Naively check the integration error."""
-    if abs(error / result) > 1e-7: warnings.warn(
-        "The integration error is relatively big!")
-
-
-def _printout(input_V, input_I_eff, output_V):
-    print(
-        "Noise signals:\n"
-        f"Output RMS voltage: {round(1000 * output_V, 4)} mV.\n"
-        f"Input RMS voltage: {round(1000 * input_V, 4)} mV.\n"
-        "Effective input RMS current (\"ENI\"):"
-        f" {round(1e9 * input_I_eff, 4)} nA.\n"
-    )
-
+    if result == 0:
+        # Not possible to calculate the relative error of a null result.
+        return
+    rel_error = abs(error / result)
+    if rel_error > 1e-7:
+        msg = f"The relative integration error is big ({rel_error})!"
+        warnings.warn(msg)
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -267,9 +383,15 @@ def plot():
 
 
 if __name__ == '__main__':
-    noise(lambda omega: Z_capacitance(omega, C))
-    noise(lambda omega: Z_capacitance(omega, C_s))
-    noise(lambda omega: 0)
-    noise(lambda omega: 1e17)
+    noise_comparison()
+    # noise(lambda omega: Z_capacitance(omega, C), omega_lims=(0, 3 * omega_digitizer), log=False)
+    # noise(lambda omega: Z_capacitance(omega, C), omega_lims=(1e5, 20 * omega_digitizer))
+    # noise(lambda omega: Z_capacitance(omega, C_s))
+    # noise(lambda omega: 0)
+    # noise(lambda omega: 1e17)
+    # noise_log(lambda omega: Z_capacitance(omega, C))
+    # noise_log(lambda omega: Z_capacitance(omega, C_s))
+    # noise_log(lambda omega: 0)
+    # noise_log(lambda omega: 1e17)
     # plot()
     # plt.show()
