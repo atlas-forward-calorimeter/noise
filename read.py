@@ -87,7 +87,7 @@ def _read_header(file):
     words_per_channel = int(words_per_channel)
 
     # Check the channels.
-    assert ch_mask in ('00000011'), \
+    assert ch_mask in ('00000011', '00001111'), \
         f"Bad channel mask: {ch_mask}!"
 
     # Skip the last two words of the header.
