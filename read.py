@@ -1,6 +1,5 @@
 """Read in data from the digitizer."""
 
-# import os  TODO: Path normalization import.
 from collections import defaultdict
 
 # Digitizer resolution. 2^14 possible count values.
@@ -9,9 +8,6 @@ count_range = 2 ** 14
 
 def read(path, voltage_range):
     """Read in events from a file, combine them, and return them."""
-    # TODO: remove path normalization.
-    # path = os.path.normpath(path)  # "Normalize" the path.
-
     readings = defaultdict(list)
     # The `with` statement here guarantees that the file will be closed
     # when the statement finishes. This is a standard way to open files.
